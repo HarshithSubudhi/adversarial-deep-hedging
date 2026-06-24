@@ -1,61 +1,51 @@
-# Adversarial Deep Hedging: Learning to Hedge without Price Process Modeling
+# Adversarial Deep Hedging
 
-An end-to-end quantitative finance simulator and deep hedging engine based on the research paper: *\"Adversarial Deep Hedging: Learning to Hedge without Price Process Modeling\"* (Hirano, Minami, & Imajo, 2023).
-
----
-
-## 📌 Project Overview
-This repository implements a data-driven framework for option hedging in incomplete markets with transaction costs and regime shifts. Instead of assuming a parametric price process (like Heston or jump-diffusion), we train a neural network hedger and a recurrent neural network generator in an alternating **min-max game**. The generator learns to simulate unfavorable price paths, forcing the hedger to learn a robust, friction-aware, and model-free hedging strategy.
-
-### Key Features:
-*   **Path Simulators**: Implemented 3 stock price path simulators: Geometric Brownian Motion (GBM), a stressed Markov regime-switching SDE model, and a path-dependent Adversarial Generator.
-*   **Friction-Aware Engine**: Models transaction costs ($c = 10$ bps) and dynamic rebalancing processes to calculate terminal portfolio wealth.
-*   **Deep Hedging Optimizers**: Optimizes hedging policies directly using Entropic Risk Measure (ERM) utility and Conditional Value-at-Risk (CVaR) tail loss parameters.
-*   **Comparative Backtests**: Evaluates performance across 10,000+ Monte Carlo simulations comparing Black-Scholes, Standard Deep Hedging, and Adversarial Deep Hedging.
+This repository implements the adversarial deep hedging framework described in [Hirano, Minami, and Imajo (2023)](https://arxiv.org/pdf/2307.13217). It provides a modular Python implementation and Jupyter notebooks to train and evaluate neural network hedging policies in incomplete markets under transaction costs and regime-switching volatility.
 
 ---
 
-## 🧮 Mathematical Formulations
+## Model Framework
 
 ### 1. Terminal P&L with Frictions
-For a short-option position $Z$ (European Call) expiring at $T$ across $N$ steps, the terminal net Profit & Loss is:
-$$\text{PL}_T = -Z(S_T) + \sum_{i=0}^{N-1} \delta_{t_i} (S_{t_{i+1}} - S_{t_i}) - \sum_{i=0}^{N} c S_{t_i} |\delta_{t_i} - \delta_{t_{i-1}}|$$
-where $\delta_{t_i}$ is the hedge ratio (shares held), $\delta_{t_{-1}} = \delta_{t_N} = 0$, and $c$ is the proportional transaction cost.
+For a written European call option $Z$ expiring at $T$ across $N$ discrete steps, the terminal net Profit & Loss (P&L) is:
 
-### 2. Min-Max Optimization Game
-The training objective is formulated as:
-$$\min_H \max_G u\left(\text{PL}_T\left(Z, G(R), H(G(R))\right)\right)$$
-where:
-*   The **Hedger ($H$)** minimizes the loss function (maximizes utility).
-*   The **Generator ($G$)** generates price paths to maximize the loss function (minimizes utility).
-*   Loss is computed using the **Entropic Risk Measure (ERM)** with risk preference $\lambda$:
-    $$L_{\text{ERM}} = \frac{1}{\lambda} \log \mathbb{E}\left[\exp(-\lambda \cdot \text{PL}_T)\right]$$
+$$PL_T = -Z(S_T) + \sum_{i=0}^{N-1} \delta_{t_i} (S_{t_{i+1}} - S_{t_i}) - \sum_{i=0}^{N} c S_{t_i} |\delta_{t_i} - \delta_{t_{i-1}}|$$
 
----
+where $S_{t_i}$ is the asset price, $\delta_{t_i}$ is the shares held (with $\delta_{t_{-1}} = \delta_{t_N} = 0$), and $c$ is the transaction cost rate (e.g., 10 bps).
 
-## 📁 Repository Structure
-```filepath
-├── data/
-│   └── 20260205_option_minute_prices_expiry.csv   # Nifty index options minute price data
-├── src/
-│   ├── models.py          # PyTorch classes (DeepHedger, AdversarialGenerator)
-│   ├── simulation.py      # Simulation routines (GBM, Stressed, Adversarial)
-│   ├── engine.py          # DeltaHedgingEngine, risk metrics, and PyTorch P&L
-│   ├── train.py           # Standard & alternating min-max training loops
-│   └── hedging_utils.py   # Option Greeks, implied volatility, and CVaR calculations
-└── notebooks/
-    ├── 01_bs_baseline.ipynb               # Benchmark Black-Scholes delta hedging path
-    └── 02_adversarial_deep_hedging.ipynb  # Main deep hedging experiments & visualizations
-```
+### 2. Min-Max Game
+We train a **Hedger** ($H$) and an **Adversarial Generator** ($G$) in a min-max game:
+
+$$\min_H \max_G \mathbb{E}\left[-u(\text{PL}_T)\right]$$
+
+where $u(x)$ is the Entropic Risk Measure (ERM) utility:
+
+$$u(x) = -\frac{1}{\lambda} \log \mathbb{E}\left[\exp(-\lambda x)\right]$$
+
+*   **Hedger**: Optimizes option delta hedge positions to maximize utility.
+*   **Generator**: Autoregressively simulates price paths designed to maximize the hedger's replication loss.
 
 ---
 
-## 📈 Backtest Performance & Results
+## Repository Structure
+*   **[src/](file:///c:/Users/harsh/All%20in%20one/Quant%20Resources/AZ%20Quant%20Project/quant-deep-hedging/src)**: Modular Python code files.
+    *   `models.py`: PyTorch networks for standard and adversarial deep hedging.
+    *   `simulation.py`: Price path simulators (GBM, Stressed SDE, Adversarial GRU).
+    *   `engine.py`: Valuation engine, risk metrics, and PyTorch P&L backpropagation logic.
+    *   `train.py`: Differentiable training loops for standard and adversarial training.
+    *   `hedging_utils.py`: Black-Scholes pricing, implied volatility search, and CVaR calculations.
+*   **[notebooks/](file:///c:/Users/harsh/All%20in%20one/Quant%20Resources/AZ%20Quant%20Project/quant-deep-hedging/notebooks)**:
+    *   `01_bs_baseline.ipynb`: Baseline Black-Scholes delta-hedging (adjusted for futures contracts, $r=0.0$).
+    *   `02_adversarial_deep_hedging.ipynb`: Main deep hedging experiments and visualizations.
 
-Evaluating option hedging strategies on $10,000$ Monte Carlo paths ($N=20$, $c=10$ bps):
+---
+
+## Backtest & Simulation Results
+
+Option hedging performance evaluated on 10,000 Monte Carlo paths ($N=20$, $c=10$ bps):
 
 ### 1. Standard Market (GBM Paths)
-Under calm market conditions matching Black-Scholes assumptions:
+Under standard log-normal assumptions:
 
 | Hedging Strategy | Mean P&L | Std Dev P&L | CVaR (95%) | Downside Risk | Hedging Error (RMSE) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
@@ -63,8 +53,8 @@ Under calm market conditions matching Black-Scholes assumptions:
 | **Standard Deep Hedging** | -0.0605 | 0.0912 | 0.3201 | 0.0912 | 0.1095 |
 | **Adversarial Deep Hedging** | -0.0775 | 0.0358 | 0.1603 | 0.0358 | 0.0854 |
 
-### 2. Stressed Market (Regime-Switching SDE Paths)
-Under market stress (Markov regime-switching volatility spikes and market selloffs):
+### 2. Stressed Market (Regime-Switching Paths)
+Under regime-switching volatility spikes and market selloffs:
 
 | Hedging Strategy | Mean P&L | Std Dev P&L | CVaR (95%) | Downside Risk | Hedging Error (RMSE) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
@@ -72,27 +62,18 @@ Under market stress (Markov regime-switching volatility spikes and market sellof
 | **Standard Deep Hedging** | -0.0950 | 0.1339 | 0.4781 | 0.1339 | 0.1642 |
 | **Adversarial Deep Hedging** | -0.0917 | 0.0549 | 0.2194 | 0.0549 | 0.1070 |
 
-### 🔍 Key Quant Insights:
-1.  **Regime Switch Robustness**: Standard deep hedging (trained only on normal GBM paths) completely breaks down under market stress, causing its CVaR to explode to **0.4781**. The **Adversarial Deep Hedger** maintains a tight CVaR of **0.2194**, proving highly robust.
-2.  **No-Transaction Band**: In the presence of transaction costs, the neural network models learn a smoother delta profile relative to Black-Scholes (rebalancing less frequently on small price fluctuations) to optimize net P&L.
+### Key Observations:
+1.  **Regime Switch Robustness**: Standard deep hedging (trained only on normal GBM paths) breaks down under market stress, causing its tail loss (CVaR) to spike to **0.4781**. The **Adversarial Deep Hedger** limits CVaR to **0.2194**, showing strong robustness.
+2.  **No-Transaction Band**: Under transaction costs, the neural network models learn a smoother delta profile relative to Black-Scholes (reducing trade frequency on small spot movements) to optimize P&L.
 
 ---
 
-## 🚀 Setup & Execution
-
-### Prerequisites
-Install the required libraries:
+## Setup & Running the Notebooks
+Install dependencies:
 ```bash
 pip install torch pandas numpy matplotlib jupyter
 ```
-
-### Running the Project
-1.  Navigate to the repository folder:
-    ```bash
-    cd quant-deep-hedging
-    ```
-2.  Launch Jupyter Lab/Notebook:
-    ```bash
-    jupyter notebook
-    ```
-3.  Open `notebooks/02_adversarial_deep_hedging.ipynb` to view the comprehensive deep hedging simulation.
+Run Jupyter:
+```bash
+jupyter notebook
+```
